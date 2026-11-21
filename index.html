@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>불꽃놀이</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    width: 100%; height: 100%; overflow: hidden;
+    background: #03040c;
+  }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", sans-serif;
+    touch-action: none;
+    -webkit-user-select: none; user-select: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  /* 밤하늘 배경 */
+  #sky {
+    position: fixed; inset: 0; width: 100%; height: 100%;
+    background: radial-gradient(ellipse at 50% 120%, #1c2152 0%, #0a0c26 45%, #03040c 100%);
+  }
+  /* 불꽃 레이어 */
+  #fx { position: fixed; inset: 0; width: 100%; height: 100%; cursor: crosshair; }
+  header {
+    position: fixed; left: 0; right: 0;
+    top: max(28px, env(safe-area-inset-top));
+    text-align: center; pointer-events: none; z-index: 2;
+  }
+  h1 {
+    color: #fff;
+    font-size: clamp(34px, 10vw, 68px);
+    font-weight: 800;
+    letter-spacing: 0.1em;
+    text-shadow: 0 0 12px rgba(255, 200, 120, .8), 0 0 36px rgba(255, 110, 80, .5);
+  }
+  p {
+    margin-top: 10px;
+    color: rgba(255, 255, 255, .65);
+    font-size: clamp(14px, 3.8vw, 18px);
+    transition: opacity 1s;
+  }
+</style>
+</head>
+<body>
+  <canvas id="sky"></canvas>
+  <canvas id="fx"></canvas>
+  <header>
+    <h1>불꽃놀이</h1>
+    <p id="hint">화면 아무 곳이나 눌러 보세요 ✨</p>
+  </header>
+
+<script>
+  const sky = document.getElementById('sky'), sctx = sky.getContext('2d');
+  const fx  = document.getElementById('fx'),  ctx  = fx.getContext('2d');
+  const hint = document.getElementById('hint');
+  let W, H, DPR;
+  const particles = [];
+  const MAX = 3000;
+
+  // 화면 크기 맞추기 (고해상도 휴대폰 대응)
+  function resize() {
+    DPR = Math.min(window.devicePixelRatio || 1, 2);
+    W = window.innerWidth; H = window.innerHeight;
+    [sky, fx].forEach(c => { c.width = W * DPR; c.height = H * DPR; });
+    sctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    drawStars();
+  }
+
+  // 별 그리기
+  function drawStars() {
+    sctx.clearRect(0, 0, W, H);
+    const n = Math.floor(W * H / 2500);
+    for (let i = 0; i < n; i++) {
+      sctx.fillStyle = `rgba(255,255,255,${Math.random() * 0.7 + 0.2})`;
+      sctx.beginPath();
+      sctx.arc(Math.random() * W, Math.random() * H * 0.9, Math.random() * 1.2 + 0.2, 0, Math.PI * 2);
+      sctx.fill();
+    }
+  }
+
+  // 불꽃 터뜨리기
+  function burst(x, y) {
+    const baseHue = Math.random() * 360;
+    const rainbow = Math.random() < 0.3;   // 30% 확률로 무지개색
+    const ring    = Math.random() < 0.25;  // 25% 확률로 고리 모양
+    const count   = W < 600 ? 80 : 120;
+    const power   = Math.max(4.5, Math.min(W, H) / 95);
+
+    for (let i = 0; i < count; i++) {
+      const angle = ring ? (i / count) * Math.PI * 2 : Math.random() * Math.PI * 2;
+      const speed = ring ? power : power * Math.sqrt(Math.random());
+      particles.push({
+        x, y, px: x, py: y,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed,
+        hue: rainbow ? Math.random() * 360 : baseHue + (Math.random() * 40 - 20),
+        life: 1,
+        decay: 0.010 + Math.random() * 0.012,
+        size: 1.6 + Math.random() * 1.6,
+        twinkle: Math.random() < 0.3
+      });
+    }
+    // 중심 섬광
+    flashes.push({ x, y, r: power * 9, a: 1, hue: baseHue });
+
+    if (particles.length > MAX) particles.splice(0, particles.length - MAX);
+  }
+
+  const flashes = [];
+
+  function loop() {
+    // 잔상: 이전 프레임을 서서히 지움 (배경은 그대로 보임)
+    ctx.globalCompositeOperation = 'destination-out';
+    ctx.fillStyle = 'rgba(0,0,0,0.2)';
+    ctx.fillRect(0, 0, W, H);
+    ctx.globalCompositeOperation = 'lighter';
+
+    // 섬광
+    for (let i = flashes.length - 1; i >= 0; i--) {
+      const f = flashes[i];
+      const g = ctx.createRadialGradient(f.x, f.y, 0, f.x, f.y, f.r);
+      g.addColorStop(0, `hsla(${f.hue},100%,85%,${f.a * 0.6})`);
+      g.addColorStop(1, `hsla(${f.hue},100%,60%,0)`);
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.arc(f.x, f.y, f.r, 0, Math.PI * 2); ctx.fill();
+      f.a -= 0.08;
+      if (f.a <= 0) flashes.splice(i, 1);
+    }
+
+    // 불꽃 입자
+    ctx.lineCap = 'round';
+    for (let i = particles.length - 1; i >= 0; i--) {
+      const p = particles[i];
+      p.px = p.x; p.py = p.y;
+      p.vx *= 0.965; p.vy *= 0.965;  // 공기 저항
+      p.vy += 0.055;                 // 중력
+      p.x += p.vx; p.y += p.vy;
+      p.life -= p.decay;
+      if (p.life <= 0) { particles.splice(i, 1); continue; }
+
+      let alpha = p.life;
+      if (p.twinkle && Math.random() < 0.3) alpha *= 0.2;
+
+      ctx.strokeStyle = `hsla(${p.hue},100%,${55 + p.life * 20}%,${alpha})`;
+      ctx.lineWidth = p.size * (0.5 + p.life * 0.5);
+      ctx.beginPath();
+      ctx.moveTo(p.px, p.py);
+      ctx.lineTo(p.x, p.y);
+      ctx.stroke();
+    }
+
+    requestAnimationFrame(loop);
+  }
+
+  // 클릭·터치 모두 대응
+  fx.addEventListener('pointerdown', e => {
+    e.preventDefault();
+    burst(e.clientX, e.clientY);
+    hint.style.opacity = 0;
+  });
+
+  window.addEventListener('resize', resize);
+  resize();
+  loop();
+
+  // 처음 열 때 인사용 불꽃 하나
+  setTimeout(() => burst(W / 2, H * 0.45), 400);
+</script>
+</body>
+</html>
